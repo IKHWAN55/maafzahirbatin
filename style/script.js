@@ -1,5 +1,11 @@
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
+
+const IS_MOBILE = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+const MAX_STARS = IS_MOBILE ? 120 : 300;
+const DOT_BATCH = IS_MOBILE ? 2 : 5;
+const MAX_SHOOTING_STARS = 3;
+
 const stars = [];
 const explosions = [];
 const shootingStars = [];
@@ -18,9 +24,9 @@ function resizeCanvas() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
   bearY = canvas.height - 80;
-
   stars.length = 0;
-  for (let i = 0; i < 300; i++) {
+
+  for (let i = 0; i < MAX_STARS; i++) {
     stars.push({
       x: Math.random() * canvas.width,
       y: Math.random() * canvas.height,
@@ -30,37 +36,29 @@ function resizeCanvas() {
     });
   }
 
-  function checkOrientation() {
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    const isPortrait = window.innerHeight > window.innerWidth;
-
-    const notice = document.getElementById("rotateNotice");
-    if (isMobile && isPortrait) {
-      notice.style.display = "block";
-      canvas.style.display = "none";
-      document.getElementById("bear").style.display = "none";
-    } else {
-      notice.style.display = "none";
-      canvas.style.display = "block";
-      document.getElementById("bear").style.display = "block";
-    }
-  }
-
-  window.addEventListener('resize', () => {
-    resizeCanvas();
-    checkOrientation();
-  });
   checkOrientation();
-
-
   targetDotsQueue = [];
   currentCharIndex = 0;
   animationDone = false;
   generateAllTargetDots();
 }
 
-resizeCanvas();
+function checkOrientation() {
+  const isPortrait = window.innerHeight > window.innerWidth;
+  const notice = document.getElementById("rotateNotice");
+  if (IS_MOBILE && isPortrait) {
+    notice.style.display = "block";
+    canvas.style.display = "none";
+    document.getElementById("bear").style.display = "none";
+  } else {
+    notice.style.display = "none";
+    canvas.style.display = "block";
+    document.getElementById("bear").style.display = "block";
+  }
+}
+
 window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
 
 function createExplosion(x, y) {
   const count = 20;
@@ -68,8 +66,7 @@ function createExplosion(x, y) {
     const angle = Math.random() * Math.PI * 2;
     const speed = Math.random() * 6 + 2;
     explosions.push({
-      x,
-      y,
+      x, y,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
       life: 60,
@@ -81,9 +78,7 @@ function createExplosion(x, y) {
 function drawStars() {
   for (let star of stars) {
     star.alpha += star.delta;
-    if (star.alpha >= 1 || star.alpha <= 0) {
-      star.delta = -star.delta;
-    }
+    if (star.alpha >= 1 || star.alpha <= 0) star.delta = -star.delta;
 
     ctx.save();
     ctx.globalAlpha = star.alpha;
@@ -96,11 +91,11 @@ function drawStars() {
 }
 
 function createShootingStar() {
+  if (shootingStars.length >= MAX_SHOOTING_STARS) return;
   const startX = Math.random() * canvas.width;
   const startY = Math.random() * canvas.height / 2;
   shootingStars.push({
-    x: startX,
-    y: startY,
+    x: startX, y: startY,
     length: Math.random() * 300 + 100,
     speed: Math.random() * 10 + 6,
     angle: Math.PI / 4,
@@ -128,36 +123,32 @@ function drawShootingStars() {
     s.x += Math.cos(s.angle) * s.speed;
     s.y += Math.sin(s.angle) * s.speed;
     s.opacity -= 0.01;
-
-    if (s.opacity <= 0) {
-      shootingStars.splice(i, 1);
-    }
+    if (s.opacity <= 0) shootingStars.splice(i, 1);
   }
 }
 
 function generateCharDots(char, x, y) {
   const tempCanvas = document.createElement('canvas');
-  tempCanvas.width = canvas.width;
-  tempCanvas.height = canvas.height;
+  tempCanvas.width = 200;
+  tempCanvas.height = 200;
   const tempCtx = tempCanvas.getContext('2d');
 
   tempCtx.font = `bold ${fontSize}px ${fontFamily}`;
   tempCtx.fillStyle = "red";
   tempCtx.textAlign = "left";
-  tempCtx.fillText(char, x, y);
+  tempCtx.fillText(char, 0, fontSize);
 
-  const imageData = tempCtx.getImageData(0, 0, canvas.width, canvas.height).data;
+  const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height).data;
   const charDots = [];
 
-  for (let y = 0; y < canvas.height; y += 4) {
-    for (let x = 0; x < canvas.width; x += 4) {
-      const index = (y * canvas.width + x) * 4;
+  for (let j = 0; j < tempCanvas.height; j += 4) {
+    for (let i = 0; i < tempCanvas.width; i += 4) {
+      const index = (j * tempCanvas.width + i) * 4;
       if (imageData[index + 3] > 128) {
-        charDots.push({ x, y });
+        charDots.push({ x: x + i, y: y - fontSize + j });
       }
     }
   }
-
   return charDots;
 }
 
@@ -178,7 +169,6 @@ function generateAllTargetDots() {
         targetDotsQueue.push([]);
         continue;
       }
-
       const charDots = generateCharDots(char, xCursor, y);
       targetDotsQueue.push(charDots);
       xCursor += tempCtx.measureText(char).width;
@@ -188,19 +178,14 @@ function generateAllTargetDots() {
 
 function shootDot() {
   if (animationDone) return;
-
-  while (
-    currentCharIndex < targetDotsQueue.length &&
-    targetDotsQueue[currentCharIndex].length === 0
-  ) {
+  while (currentCharIndex < targetDotsQueue.length && targetDotsQueue[currentCharIndex].length === 0) {
     currentCharIndex++;
   }
 
   const targetDots = targetDotsQueue[currentCharIndex];
   if (!targetDots || targetDots.length === 0) return;
 
-  const batch = 5;
-  for (let i = 0; i < batch; i++) {
+  for (let i = 0; i < DOT_BATCH; i++) {
     const target = targetDots.shift();
     if (!target) return;
     const angle = Math.random() * Math.PI / 6 - Math.PI / 12;
@@ -222,8 +207,8 @@ function shootDot() {
 
 function animate() {
   const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-  gradient.addColorStop(0, "#1a0033"); //#0a001f
-  gradient.addColorStop(1, "#bc96ca"); //#1a0033 #ffaebc
+  gradient.addColorStop(0, "#1a0033");
+  gradient.addColorStop(1, "#bc96ca");
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -267,11 +252,9 @@ function animate() {
     }
   }
 
-  if (
-    !animationDone &&
+  if (!animationDone &&
     currentCharIndex >= targetDotsQueue.length &&
-    dots.every(dot => Math.abs(dot.targetX - dot.x) < 2 && Math.abs(dot.targetY - dot.y) < 2)
-  ) {
+    dots.every(dot => Math.abs(dot.targetX - dot.x) < 2 && Math.abs(dot.targetY - dot.y) < 2)) {
     animationDone = true;
     const bear = document.getElementById("bear");
     if (bear.src !== "https://i.pinimg.com/originals/cf/e2/66/cfe2664925719a18a078c8c1b7552b9d.gif") {
@@ -282,17 +265,12 @@ function animate() {
   requestAnimationFrame(animate);
 }
 
-canvas.addEventListener("click", (e) => {
-  createExplosion(e.clientX, e.clientY);
-});
-
-canvas.addEventListener("touchstart", (e) => {
+canvas.addEventListener("click", e => createExplosion(e.clientX, e.clientY));
+canvas.addEventListener("touchstart", e => {
   const touch = e.touches[0];
-  if (touch) {
-    createExplosion(touch.clientX, touch.clientY);
-  }
-});
+  if (touch) createExplosion(touch.clientX, touch.clientY);
+}, { passive: true });
 
 setInterval(shootDot, 30);
-setInterval(createShootingStar, 1500);
+setInterval(createShootingStar, 2000);
 animate();
